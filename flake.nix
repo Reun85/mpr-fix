@@ -1,21 +1,21 @@
 {
-  description = "Modern C++ Development Environment";
+  description =
+    "NixOS compatible environment for Matt Keeter's Massively Parallel Rendering (mpr) project.";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgs-stable.url =
-      "github:NixOS/nixpkgs/nixos-24.05"; # Still has CMake 3.31
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs-old.url = "github:NixOS/nixpkgs/nixos-24.05";
     utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-stable, utils }:
+  outputs = { self, nixpkgs, nixpkgs-old, utils }:
     utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
         };
-        stable-pkgs = import nixpkgs-stable {
+        old-pkgs = import nixpkgs-old {
           inherit system;
           config.allowUnfree = true;
         };
@@ -25,12 +25,12 @@
             owner = "libeigen";
             repo = "eigen";
             rev = "3.3.7";
-            sha256 =
-              "oXJ4V5rakL9EPtQF0Geptl0HMR8700FdSrOB09DbbMQ="; # Verify this hash
+            sha256 = "oXJ4V5rakL9EPtQF0Geptl0HMR8700FdSrOB09DbbMQ=";
           };
-          nativeBuildInputs = with stable-pkgs; [ cmake ninja ];
+          nativeBuildInputs = [ old-pkgs.cmake pkgs.ninja ];
+
           # 2. Fix the broken .pc file path that Nix is complaining about
-          # This replaces the broken line with a clean include path
+          # I believe it creates a path like: `//nix/store/...` and fails.
           postInstall = ''
             sed -i "s|Cflags:.*|Cflags: -I''${out}/include/eigen3|" $out/share/pkgconfig/eigen3.pc
           '';
@@ -38,64 +38,50 @@
       in {
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            # CPP
             llvmPackages.clang
             llvmPackages.lldb
-            stable-pkgs.cmake
-            ninja
-            gcc13
-            just
             llvmPackages.clang-tools
-            pkg-config
-            cudaPackages.cuda_nvcc
 
-            #wayland
-            xorg.libXcursor
-            xorg.libXrandr
-            xorg.libXi
-            wayland
-            wayland-protocols
-            wayland-utils
-            libxkbcommon
-            mesa
-            glfw
-            glew
-            libGL
+            # Cuda
+            cudaPackages.cuda_nvcc
+            gcc13
+
+            # CMake
+            old-pkgs.cmake # Old CMake to support libfive's 2.28 version.
+            ninja
+
+            # Scripts
+            just
+            pkg-config
+
           ];
 
           buildInputs = with pkgs; [
-            gtest
+            # OpenGL
             glfw
             glew
             libGL
-            # stable-pkgs.nixGL
+
+            # Libraries
             boost
             qt5.qtbase
-            guile # Added to satisfy libfive-guile dependency
-            eigen337
-            libpng
-            zlib
             cudaPackages.cuda_cudart
-            vcpkg
 
-            #wayland
-            xorg.libXcursor
-            xorg.libXrandr
-            xorg.libXi
-            wayland
-            wayland-protocols
-            wayland-utils
-            libxkbcommon
+            ### libraries for libfive
+            guile
+            eigen337
+
           ];
 
           shellHook = ''
-            export VCPKG_ROOT=${pkgs.vcpkg}/share/vcpkg
             export CUDA_PATH=${pkgs.cudaPackages.cuda_cudart}
             export NVCC_CCBIN="${pkgs.gcc13}/bin/gcc"
             export CUDAFLAGS="-std=c++14"
 
             export CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=native"
 
-            export LD_LIBRARY_PATH=${pkgs.wayland}/lib:${pkgs.libxkbcommon}/lib:${pkgs.libGL}/lib:$LD_LIBRARY_PATH
+            export LD_LIBRARY_PATH=${pkgs.libGL}/lib:$LD_LIBRARY_PATH
 
             export LD_LIBRARY_PATH=/run/opengl-driver/lib:$LD_LIBRARY_PATH
 
@@ -105,7 +91,10 @@
             export CC=clang
             export CXX=clang++
 
-            echo "C++ Environment Loaded with C++17 and Clang"
+            cmake --version
+            $NVCC_CCBIN --version
+            echo -n "ninja version: "
+            ninja --version
 
           '';
         };

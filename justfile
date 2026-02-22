@@ -4,7 +4,7 @@ run: build
 build:
   cd mpr/build && ninja
 
-setup:
+setup: clean
   mkdir -p mpr/build
   cd mpr/build && cmake -GNinja ..
 
